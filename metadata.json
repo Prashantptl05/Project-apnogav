@@ -1,0 +1,6 @@
+{
+  "name": "Johar Barha 3D",
+  "description": "Open-world 3D driving and walking game set in Gram Johar Barha, Bareli, Raisen (MP) featuring procedural luxury cars, Desi missions, a 1.5 km red laser geofence, and Desi Jhola collectibles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
