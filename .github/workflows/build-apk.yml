@@ -13,16 +13,16 @@ jobs:
       - name: 1. Repository Checkout karein
         uses: actions/checkout@v4
 
-      - name: 2. Java (JDK 17) Setup karein
+      - name: 2. Java (JDK 21) Setup karein
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
-      - name: 3. Gradle Setup karein
+      - name: 3. Gradle 9.3.1 Setup karein
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '9.3.1'
 
       - name: 4. Android APK Build karein
         run: |
