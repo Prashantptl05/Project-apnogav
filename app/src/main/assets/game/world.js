@@ -631,6 +631,7 @@ export function buildJoharBarhaWorld(scene) {
     sunLight,
     fenceMat,
     applyTimeOfDay,
+    applySatelliteGroundTexture,
     loadOsmRoads,
     getOsmRoads: () => osmRoadSegments,
   };

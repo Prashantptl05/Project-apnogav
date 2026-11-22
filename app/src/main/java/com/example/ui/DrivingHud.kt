@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Garage
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Streetview
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -274,11 +275,37 @@ fun DrivingHudOverlay(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Real Street View Peek (360° Gaon Darshan) Toggle Button
+                        Row(
+                            modifier = Modifier
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xDD133120))
+                                .border(1.2.dp, ChanaEmerald, RoundedCornerShape(12.dp))
+                                .clickable { viewModel.openModal(ActiveModal.STREET_VIEW) }
+                                .padding(horizontal = 10.dp)
+                                .testTag("hud_street_view_button"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Streetview,
+                                contentDescription = "Real Street View Peek",
+                                tint = ChanaEmerald,
+                                modifier = Modifier.size(17.dp),
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = "STREET VIEW",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = WarmIvoryText,
+                            )
+                        }
+
                         // Camera Cycle Pill (Chase / Drift / Hood / 360 Darshan)
                         val camLabel = when (tel.cameraMode) {
                             "DRIFT" -> "DRIFT CAM"
                             "HOOD" -> "HOOD CAM"
-                            "DARSHAN_360" -> "360° DARSHAN"
+                            "DARSHAN_360" -> "360° ORBIT"
                             "WALK" -> "WALK CAM"
                             else -> "CHASE CAM"
                         }

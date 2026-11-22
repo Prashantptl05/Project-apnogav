@@ -331,6 +331,9 @@ export async function bootJoharBarha3D() {
     loadOsm: () => {
       world.loadOsmRoads((status) => bridgeCall('onOsmStatus', status));
     },
+    setMapsApiKey: (apiKey) => {
+      world.applySatelliteGroundTexture(apiKey || '');
+    },
   };
 
   window.addEventListener('resize', () => {
