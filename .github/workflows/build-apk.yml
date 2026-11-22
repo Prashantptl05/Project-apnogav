@@ -1,0 +1,35 @@
+name: Build Project-apnogav APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Repository Checkout karein
+        uses: actions/checkout@v4
+
+      - name: 2. Java (JDK 17) Setup karein
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 3. Gradle Setup aur Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 4. Gradlew ko Permission dein
+        run: chmod +x ./gradlew
+
+      - name: 5. Android APK Build karein
+        run: ./gradlew assembleDebug
+
+      - name: 6. APK File Upload karein
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project-apnogav-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
