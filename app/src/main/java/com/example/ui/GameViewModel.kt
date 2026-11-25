@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
 import com.example.data.GameCatalog
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
@@ -82,8 +81,8 @@ data class GameUiState(
     val telemetry: TelemetryState = TelemetryState(),
     val activeModal: ActiveModal = ActiveModal.TITLE,
     val toastMessage: String? = null,
-    val osmStatus: String = "Procedural Johar Barha Roads",
-    val mapsApiKey: String = "",
+    val osmStatus: String = "Esri Satellite + OSM Ready (No API Key)",
+    val satelliteTerrainEnabled: Boolean = true,
     val victorySummary: VictorySummary? = null,
     val failureSummary: FailureSummary? = null,
 )
@@ -96,17 +95,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val telemetry = MutableStateFlow(TelemetryState())
     private val activeModal = MutableStateFlow(ActiveModal.TITLE)
     private val toastMessage = MutableStateFlow<String?>(null)
-    private val osmStatus = MutableStateFlow("Procedural Johar Barha Roads")
-    private val mapsApiKey = MutableStateFlow(resolveInitialMapsApiKey())
+    private val osmStatus = MutableStateFlow("Esri Satellite + OSM Ready (No API Key)")
+    private val satelliteTerrainEnabled = MutableStateFlow(prefs.getBoolean("satellite_terrain", true))
     private val victorySummary = MutableStateFlow<VictorySummary?>(null)
     private val failureSummary = MutableStateFlow<FailureSummary?>(null)
-
-    private fun resolveInitialMapsApiKey(): String {
-        val saved = prefs.getString("maps_api_key", "").orEmpty().trim()
-        if (saved.isNotBlank()) return saved
-        val fromBuild = BuildConfig.MAPS_API_KEY.trim()
-        return if (fromBuild.isNotBlank() && fromBuild != "MY_MAPS_API_KEY") fromBuild else ""
-    }
 
     private var jsRunner: ((String) -> Unit)? = null
 
@@ -125,7 +117,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         combine(engineReady, telemetry, activeModal, toastMessage, osmStatus) { ready, tel, modal, toast, osm ->
             InternalUi(ready, tel, modal, toast, osm)
         },
-        combine(victorySummary, failureSummary, mapsApiKey) { v, f, key -> Triple(v, f, key) },
+        combine(victorySummary, failureSummary, satelliteTerrainEnabled) { v, f, sat -> Triple(v, f, sat) },
     ) { profile, missions, jhola, internal, outcomes ->
         GameUiState(
             engineReady = internal.ready,
@@ -136,7 +128,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             activeModal = internal.modal,
             toastMessage = internal.toast,
             osmStatus = internal.osm,
-            mapsApiKey = outcomes.third,
+            satelliteTerrainEnabled = outcomes.third,
             victorySummary = outcomes.first,
             failureSummary = outcomes.second,
         )
@@ -185,7 +177,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun syncProfileToEngine(p: PlayerProfileEntity) {
-        val quotedKey = JSONObject.quote(mapsApiKey.value)
+        val satEnabled = satelliteTerrainEnabled.value
         evalJs(
             """
             if (window.JoharGame) {
@@ -193,7 +185,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
               window.JoharGame.setTimeOfDay('${p.timeOfDay}');
               window.JoharGame.setGraphicsQuality('${p.graphicsQuality}');
               window.JoharGame.setSoundEnabled(${p.soundEnabled});
-              window.JoharGame.setMapsApiKey($quotedKey);
+              window.JoharGame.setSatelliteTerrain($satEnabled);
             }
             """.trimIndent(),
         )
@@ -381,23 +373,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         evalJs("window.JoharGame && window.JoharGame.loadOsm();")
     }
 
-    fun saveMapsApiKey(rawKey: String) {
-        val cleaned = rawKey.trim()
-        prefs.edit().putString("maps_api_key", cleaned).apply()
-        val effective = cleaned.ifBlank {
-            val fromBuild = BuildConfig.MAPS_API_KEY.trim()
-            if (fromBuild.isNotBlank() && fromBuild != "MY_MAPS_API_KEY") fromBuild else ""
-        }
-        mapsApiKey.value = effective
-        val quotedKey = JSONObject.quote(effective)
-        evalJs("window.JoharGame && window.JoharGame.setMapsApiKey($quotedKey);")
+    fun setSatelliteTerrainEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("satellite_terrain", enabled).apply()
+        satelliteTerrainEnabled.value = enabled
+        evalJs("window.JoharGame && window.JoharGame.setSatelliteTerrain($enabled);")
         showToast(
-            if (effective.isNotBlank()) {
-                "Google Maps API Key saved! Real Street View & Satellite active."
+            if (enabled) {
+                "Esri Satellite 3D Ground ON (Free • No API Key)"
             } else {
-                "API Key cleared. Procedural 3D & Free Satellite active."
+                "Procedural Rural MP Fields ON"
             },
         )
+    }
+
+    fun enterFree3dView() {
+        activeModal.value = ActiveModal.NONE
+        evalJs("window.JoharGame && window.JoharGame.enterFree3dDarshan();")
     }
 
     fun resetProgress() {

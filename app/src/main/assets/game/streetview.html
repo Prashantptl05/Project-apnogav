@@ -3,92 +3,73 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Johar Barha Real Street View & Satellite Peek</title>
+  <title>Johar Barha Free Satellite & OSM Map</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #0d1117;
+      background: #142218;
       color: #f8fafc;
       font-family: system-ui, -apple-system, sans-serif;
       touch-action: none;
     }
-    #sv-container, #sat-container {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-    }
-    #sv-container { display: none; z-index: 2; }
-    #sat-container { display: block; z-index: 1; background: #142218; }
-    #sat-canvas {
+    #map-canvas {
       display: block;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
     }
     #zoom-controls {
       position: fixed;
       right: 14px;
-      bottom: 18px;
+      bottom: 22px;
       display: flex;
       flex-direction: column;
       gap: 8px;
       z-index: 10;
     }
     .zoom-btn {
-      width: 44px;
-      height: 44px;
+      width: 46px;
+      height: 46px;
       border-radius: 12px;
       border: 1px solid rgba(245, 158, 11, 0.55);
-      background: rgba(16, 19, 24, 0.86);
+      background: rgba(16, 19, 24, 0.88);
       color: #f8fafc;
       font-size: 22px;
       font-weight: 700;
       cursor: pointer;
     }
-    #loading-pill {
+    #attribution {
       position: fixed;
-      left: 50%;
-      bottom: 18px;
-      transform: translateX(-50%);
-      padding: 8px 14px;
-      border-radius: 999px;
-      background: rgba(16, 19, 24, 0.88);
-      border: 1px solid rgba(245, 158, 11, 0.5);
-      color: #fde68a;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 12;
+      left: 12px;
+      bottom: 10px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(16, 19, 24, 0.78);
+      color: #cbd5e1;
+      font-size: 10px;
+      z-index: 10;
       pointer-events: none;
-      max-width: 84vw;
-      text-align: center;
     }
   </style>
 </head>
 <body>
-  <div id="sat-container">
-    <canvas id="sat-canvas"></canvas>
-    <div id="zoom-controls">
-      <button class="zoom-btn" id="btn-zin" aria-label="Zoom In">+</button>
-      <button class="zoom-btn" id="btn-zout" aria-label="Zoom Out">−</button>
-      <button class="zoom-btn" id="btn-recenter" aria-label="Center">◎</button>
-    </div>
+  <canvas id="map-canvas"></canvas>
+  <div id="zoom-controls">
+    <button class="zoom-btn" id="btn-zin" aria-label="Zoom In">+</button>
+    <button class="zoom-btn" id="btn-zout" aria-label="Zoom Out">−</button>
+    <button class="zoom-btn" id="btn-recenter" aria-label="Recenter">◎</button>
   </div>
-  <div id="sv-container"></div>
-  <div id="loading-pill">Loading Real Johar Barha View...</div>
+  <div id="attribution">Esri World Imagery &amp; OpenStreetMap (Free • No API Key)</div>
 
   <script>
     const CENTER_LAT = 23.0035;
     const CENTER_LNG = 78.2215;
 
-    const svContainer = document.getElementById('sv-container');
-    const satContainer = document.getElementById('sat-container');
-    const zoomControls = document.getElementById('zoom-controls');
-    const statusPill = document.getElementById('loading-pill');
-    const canvas = document.getElementById('sat-canvas');
+    const canvas = document.getElementById('map-canvas');
     const ctx = canvas.getContext('2d');
+    const attrEl = document.getElementById('attribution');
 
     let currentLat = CENTER_LAT;
     let currentLng = CENTER_LNG;
@@ -96,16 +77,22 @@
     let viewLat = CENTER_LAT;
     let viewLng = CENTER_LNG;
     let zoom = 16;
-    let activeMode = 'satellite'; // 'streetview' | 'satellite'
-    let loadedGoogleKey = '';
-    let googleLoaded = false;
-    let googleFailed = false;
-    let panoramaInstance = null;
+    let activeLayer = 'satellite'; // 'satellite' (Esri World Imagery + Labels) | 'osm' (OpenStreetMap)
 
     const tileCache = new Map();
 
+    // Key Gram Johar Barha landmarks mapped near 23.0035, 78.2215
+    const metersPerLat = 111132;
+    const metersPerLng = 111320 * Math.cos((CENTER_LAT * Math.PI) / 180);
+    const VILLAGE_PINS = [
+      { label: 'Panchayat Chowk', lat: CENTER_LAT, lng: CENTER_LNG, color: '#f59e0b' },
+      { label: 'Raju Chai Tapri', lat: CENTER_LAT + 28 / metersPerLat, lng: CENTER_LNG + 52 / metersPerLng, color: '#38bdf8' },
+      { label: 'Sarpanch Haveli', lat: CENTER_LAT + 165 / metersPerLat, lng: CENTER_LNG + 245 / metersPerLng, color: '#22c55e' },
+      { label: 'Chacha Ka Khet', lat: CENTER_LAT + 310 / metersPerLat, lng: CENTER_LNG - 420 / metersPerLng, color: '#84cc16' },
+      { label: 'Gaon Nukkad', lat: CENTER_LAT - 195 / metersPerLat, lng: CENTER_LNG + 460 / metersPerLng, color: '#fb923c' },
+    ];
+
     function notifyAndroid(status, detail) {
-      statusPill.textContent = detail;
       try {
         if (window.StreetViewBridge && typeof window.StreetViewBridge.onStatus === 'function') {
           window.StreetViewBridge.onStatus(status, detail);
@@ -113,7 +100,6 @@
       } catch (_) {}
     }
 
-    // --- ZERO-DEPENDENCY REAL SATELLITE TILE VIEWER (Esri World Imagery + OSM Labels) ---
     function latLngToTileXY(lat, lng, z) {
       const n = Math.pow(2, z);
       const x = ((lng + 180) / 360) * n;
@@ -133,14 +119,15 @@
       if (tileCache.has(url)) return tileCache.get(url);
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      const entry = { img, loaded: false, failed: false };
-      img.onload = () => { entry.loaded = true; renderSatellite(); };
-      img.onerror = () => { entry.failed = true; };
+      const entry = { img, loaded: false };
+      img.onload = () => {
+        entry.loaded = true;
+        renderMap();
+      };
       img.src = url;
       tileCache.set(url, entry);
-      if (tileCache.size > 180) {
-        const firstKey = tileCache.keys().next().value;
-        tileCache.delete(firstKey);
+      if (tileCache.size > 220) {
+        tileCache.delete(tileCache.keys().next().value);
       }
       return entry;
     }
@@ -150,14 +137,13 @@
       canvas.width = Math.floor(window.innerWidth * dpr);
       canvas.height = Math.floor(window.innerHeight * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      renderSatellite();
+      renderMap();
     }
 
-    function renderSatellite() {
-      if (activeMode !== 'satellite') return;
+    function renderMap() {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      ctx.fillStyle = '#152518';
+      ctx.fillStyle = activeLayer === 'osm' ? '#e5e7eb' : '#152518';
       ctx.fillRect(0, 0, w, h);
 
       const tileSize = 256;
@@ -176,25 +162,35 @@
           const sx = Math.floor(w / 2 + (tx - centerTile.x) * tileSize);
           const sy = Math.floor(h / 2 + (ty - centerTile.y) * tileSize);
 
-          const satUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zInt}/${ty}/${tx}`;
-          const satTile = getTileImage(satUrl);
-          if (satTile.loaded) {
-            ctx.drawImage(satTile.img, sx, sy, tileSize, tileSize);
+          if (activeLayer === 'osm') {
+            const osmUrl = `https://tile.openstreetmap.org/${zInt}/${tx}/${ty}.png`;
+            const osmTile = getTileImage(osmUrl);
+            if (osmTile.loaded) {
+              ctx.drawImage(osmTile.img, sx, sy, tileSize, tileSize);
+            } else {
+              ctx.fillStyle = '#dbe4dc';
+              ctx.fillRect(sx, sy, tileSize - 1, tileSize - 1);
+            }
           } else {
-            ctx.fillStyle = '#1c3020';
-            ctx.fillRect(sx, sy, tileSize - 1, tileSize - 1);
-          }
+            const satUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zInt}/${ty}/${tx}`;
+            const satTile = getTileImage(satUrl);
+            if (satTile.loaded) {
+              ctx.drawImage(satTile.img, sx, sy, tileSize, tileSize);
+            } else {
+              ctx.fillStyle = '#1c3020';
+              ctx.fillRect(sx, sy, tileSize - 1, tileSize - 1);
+            }
 
-          // Subtle road & place labels overlay
-          const lblUrl = `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/${zInt}/${ty}/${tx}`;
-          const lblTile = getTileImage(lblUrl);
-          if (lblTile.loaded) {
-            ctx.drawImage(lblTile.img, sx, sy, tileSize, tileSize);
+            const roadUrl = `https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/${zInt}/${ty}/${tx}`;
+            const roadTile = getTileImage(roadUrl);
+            if (roadTile.loaded) {
+              ctx.drawImage(roadTile.img, sx, sy, tileSize, tileSize);
+            }
           }
         }
       }
 
-      // Draw 1.5 km Gram Johar Barha Red Laser Geofence Circle
+      // 1.5 km Red Laser Geofence Ring
       const villageCenter = latLngToTileXY(CENTER_LAT, CENTER_LNG, zInt);
       const vcx = w / 2 + (villageCenter.x - centerTile.x) * tileSize;
       const vcy = h / 2 + (villageCenter.y - centerTile.y) * tileSize;
@@ -204,23 +200,39 @@
       ctx.save();
       ctx.beginPath();
       ctx.arc(vcx, vcy, fenceRadiusPx, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.92)';
+      ctx.lineWidth = 3.2;
       ctx.setLineDash([10, 6]);
       ctx.stroke();
       ctx.restore();
 
-      // Label Gram Johar Barha center
-      ctx.save();
-      ctx.fillStyle = 'rgba(16, 19, 24, 0.8)';
-      ctx.fillRect(vcx - 78, vcy - 30, 156, 20);
-      ctx.fillStyle = '#f59e0b';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('GRAM JOHAR BARHA', vcx, vcy - 16);
-      ctx.restore();
+      // Draw Johar Barha Landmarks
+      VILLAGE_PINS.forEach((pin) => {
+        const pt = latLngToTileXY(pin.lat, pin.lng, zInt);
+        const px = w / 2 + (pt.x - centerTile.x) * tileSize;
+        const py = h / 2 + (pt.y - centerTile.y) * tileSize;
+        if (px < -60 || px > w + 60 || py < -40 || py > h + 40) return;
 
-      // Draw Live Car / Player Pin
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, Math.PI * 2);
+        ctx.fillStyle = pin.color;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.font = 'bold 11px sans-serif';
+        const tw = ctx.measureText(pin.label).width;
+        ctx.fillStyle = 'rgba(16, 19, 24, 0.82)';
+        ctx.fillRect(px - tw / 2 - 5, py - 24, tw + 10, 16);
+        ctx.fillStyle = '#f8fafc';
+        ctx.textAlign = 'center';
+        ctx.fillText(pin.label, px, py - 12);
+        ctx.restore();
+      });
+
+      // Live Car / Player Chevron
       const pTile = latLngToTileXY(currentLat, currentLng, zInt);
       const px = w / 2 + (pTile.x - centerTile.x) * tileSize;
       const py = h / 2 + (pTile.y - centerTile.y) * tileSize;
@@ -229,8 +241,8 @@
       ctx.translate(px, py);
       ctx.rotate((currentHeading * Math.PI) / 180);
       ctx.beginPath();
-      ctx.arc(0, 0, 14, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
+      ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.36)';
       ctx.fill();
       ctx.beginPath();
       ctx.moveTo(0, -11);
@@ -241,12 +253,12 @@
       ctx.fillStyle = '#f59e0b';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
     }
 
-    // Touch pan & zoom on satellite map
+    // Smooth touch drag-pan
     let dragActive = false;
     let lastX = 0;
     let lastY = 0;
@@ -266,171 +278,42 @@
       const next = tileXYToLatLng(c.x - dx / 256, c.y - dy / 256, zInt);
       viewLat = next.lat;
       viewLng = next.lng;
-      renderSatellite();
+      renderMap();
     });
     window.addEventListener('pointerup', () => { dragActive = false; });
 
     document.getElementById('btn-zin').onclick = () => {
       zoom = Math.min(18, zoom + 1);
-      renderSatellite();
+      renderMap();
     };
     document.getElementById('btn-zout').onclick = () => {
       zoom = Math.max(12, zoom - 1);
-      renderSatellite();
+      renderMap();
     };
     document.getElementById('btn-recenter').onclick = () => {
       viewLat = currentLat;
       viewLng = currentLng;
       zoom = 16;
-      renderSatellite();
+      renderMap();
     };
 
-    // --- GOOGLE MAPS 360 STREET VIEW PANORAMA (Progressive Radius Search!) ---
-    window.gm_authFailure = function () {
-      googleFailed = true;
-      showSatelliteView('Google Maps API Key error — showing Real Satellite View instead.');
-      notifyAndroid('KEY_ERROR', 'Google Maps API Key invalid or Maps JS API not enabled. Showing Real Satellite Map.');
-    };
-
-    function loadGoogleMapsSdk(apiKey) {
-      return new Promise((resolve, reject) => {
-        if (googleLoaded && loadedGoogleKey === apiKey && window.google?.maps) {
-          resolve();
-          return;
-        }
-        googleFailed = false;
-        const old = document.getElementById('gmaps-sdk-script');
-        if (old) old.remove();
-        const script = document.createElement('script');
-        script.id = 'gmaps-sdk-script';
-        script.async = true;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
-        script.onload = () => {
-          if (googleFailed || !window.google?.maps) {
-            reject(new Error('Google Maps auth failed'));
-          } else {
-            googleLoaded = true;
-            loadedGoogleKey = apiKey;
-            resolve();
-          }
-        };
-        script.onerror = () => reject(new Error('Network error loading Google Maps SDK'));
-        document.head.appendChild(script);
-      });
-    }
-
-    function haversineMeters(lat1, lng1, lat2, lng2) {
-      const R = 6371000;
-      const dLat = ((lat2 - lat1) * Math.PI) / 180;
-      const dLng = ((lng2 - lng1) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat1 * Math.PI) / 180) *
-          Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-    }
-
-    function findNearestPanorama(svService, loc, radii, idx = 0) {
-      return new Promise((resolve, reject) => {
-        if (idx >= radii.length) {
-          reject(new Error('NO_COVERAGE'));
-          return;
-        }
-        const radius = radii[idx];
-        svService.getPanorama(
-          {
-            location: loc,
-            radius,
-            preference: google.maps.StreetViewPreference.NEAREST,
-            source: google.maps.StreetViewSource.OUTDOOR,
-          },
-          (data, status) => {
-            if (status === google.maps.StreetViewStatus.OK && data?.location?.pano) {
-              resolve(data);
-            } else {
-              findNearestPanorama(svService, loc, radii, idx + 1).then(resolve).catch(reject);
-            }
-          },
-        );
-      });
-    }
-
-    function showSatelliteView(message) {
-      activeMode = 'satellite';
-      svContainer.style.display = 'none';
-      satContainer.style.display = 'block';
-      zoomControls.style.display = 'flex';
-      resizeCanvas();
-      notifyAndroid('SATELLITE', message || `Real Satellite View • Gram Johar Barha (${currentLat.toFixed(4)}°N, ${currentLng.toFixed(4)}°E)`);
-    }
-
-    async function showStreetView(apiKey) {
-      if (!apiKey || apiKey.trim().length < 10) {
-        showSatelliteView('Real Satellite active • Tap "Open Google 360°" or add API key for in-app Street View');
-        notifyAndroid('NO_KEY', 'Add a Google Maps API Key in Settings for embedded 360° Street View, or tap Open Google 360°.');
-        return;
-      }
-
-      notifyAndroid('LOADING', 'Searching nearest 360° Street View around Gram Johar Barha...');
-      try {
-        await loadGoogleMapsSdk(apiKey.trim());
-        const svService = new google.maps.StreetViewService();
-        const loc = { lat: currentLat, lng: currentLng };
-        // Progressive radius search: 250m -> 1.5km -> 5km -> 15km -> 25km (Bareli highway fallback!)
-        const data = await findNearestPanorama(svService, loc, [250, 1500, 5000, 15000, 25000]);
-
-        activeMode = 'streetview';
-        satContainer.style.display = 'none';
-        zoomControls.style.display = 'none';
-        svContainer.style.display = 'block';
-
-        if (!panoramaInstance) {
-          panoramaInstance = new google.maps.StreetViewPanorama(svContainer, {
-            pano: data.location.pano,
-            pov: { heading: currentHeading, pitch: 2 },
-            zoom: 1,
-            addressControl: true,
-            linksControl: true,
-            panControl: true,
-            enableCloseButton: false,
-            fullscreenControl: false,
-            motionTracking: false,
-          });
-        } else {
-          panoramaInstance.setPano(data.location.pano);
-          panoramaInstance.setPov({ heading: currentHeading, pitch: 2 });
-        }
-
-        const pLat = data.location.latLng.lat();
-        const pLng = data.location.latLng.lng();
-        const distM = haversineMeters(currentLat, currentLng, pLat, pLng);
-        const label = data.location.shortDescription || data.location.description || 'Johar Barha / Bareli Road';
-        const msg = distM < 120
-          ? `360° Street View Live: ${label}`
-          : `Nearest 360° Street View (${(distM / 1000).toFixed(1)} km away): ${label}`;
-        notifyAndroid('SV_OK', msg);
-      } catch (err) {
-        const msg = err?.message === 'NO_COVERAGE'
-          ? 'No Google Street View car coverage nearby — showing Real Satellite View of Johar Barha.'
-          : 'Could not load Google Street View (check key/network) — showing Real Satellite View.';
-        showSatelliteView(msg);
-      }
-    }
-
-    window.initGaonDarshan = function (lat, lng, heading, mode, apiKey) {
+    window.initFreeMap = function (lat, lng, heading, layer) {
       currentLat = Number(lat) || CENTER_LAT;
       currentLng = Number(lng) || CENTER_LNG;
       currentHeading = Number(heading) || 0;
       viewLat = currentLat;
       viewLng = currentLng;
-
-      if (mode === 'streetview') {
-        showStreetView(apiKey || '');
-      } else {
-        showSatelliteView();
-      }
+      activeLayer = layer === 'osm' ? 'osm' : 'satellite';
+      attrEl.textContent = activeLayer === 'osm'
+        ? '© OpenStreetMap Contributors (100% Free • No API Key)'
+        : 'Esri World Imagery + Roads (100% Free • No API Key)';
+      renderMap();
+      notifyAndroid(
+        'READY',
+        activeLayer === 'osm'
+          ? 'OpenStreetMap Live • Gram Johar Barha (Zero API Key)'
+          : 'Esri World Imagery Satellite Live • Gram Johar Barha (Zero API Key)',
+      );
     };
 
     window.addEventListener('resize', resizeCanvas);

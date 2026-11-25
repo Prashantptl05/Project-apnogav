@@ -33,10 +33,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Streetview
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -70,10 +69,10 @@ import com.example.ui.theme.WarmIvoryText
 import org.json.JSONObject
 import java.io.IOException
 
-private const val SV_ASSETS_HOST = "appassets.androidplatform.net"
-private const val SV_ENTRY_URL = "https://$SV_ASSETS_HOST/assets/game/streetview.html"
+private const val MAP_ASSETS_HOST = "appassets.androidplatform.net"
+private const val MAP_ENTRY_URL = "https://$MAP_ASSETS_HOST/assets/game/streetview.html"
 
-private class StreetViewAssetClient(
+private class FreeMapAssetClient(
     private val context: Context,
     private val onPageReady: () -> Unit,
 ) : WebViewClient() {
@@ -82,7 +81,7 @@ private class StreetViewAssetClient(
         request: WebResourceRequest,
     ): WebResourceResponse? {
         val uri = request.url
-        if (uri.host != SV_ASSETS_HOST) return super.shouldInterceptRequest(view, request)
+        if (uri.host != MAP_ASSETS_HOST) return super.shouldInterceptRequest(view, request)
         val path = uri.path?.removePrefix("/assets/") ?: return null
         val mime = when {
             path.endsWith(".html") -> "text/html"
@@ -104,7 +103,7 @@ private class StreetViewAssetClient(
     }
 }
 
-private class StreetViewJsBridge(
+private class FreeMapJsBridge(
     private val onStatusUpdate: (String, String) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
@@ -121,56 +120,41 @@ fun RealStreetViewOverlay(
     lat: Double,
     lng: Double,
     headingDeg: Float,
-    apiKey: String,
-    onOpenSettingsForKey: () -> Unit,
-    onOpenExternalStreetView: (Double, Double, Float) -> Unit,
+    onEnterFree3dView: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val hasKey = apiKey.isNotBlank()
-    var activeMode by remember { mutableStateOf(if (hasKey) "streetview" else "satellite") }
+    var activeLayer by remember { mutableStateOf("satellite") } // "satellite" (Esri) | "osm" (OpenStreetMap)
     var pageLoaded by remember { mutableStateOf(false) }
     var statusDetail by remember {
-        mutableStateOf(
-            if (hasKey) {
-                "Loading 360° Street View near Johar Barha..."
-            } else {
-                "Real Satellite Map active • Tap 'Google 360°' or add API Key for embedded Street View"
-            },
-        )
+        mutableStateOf("Esri World Imagery Satellite • 100% Free (No API Key)")
     }
 
     val webView = remember {
         WebView(context).apply {
-            setBackgroundColor(AndroidColor.parseColor("#0D1117"))
+            setBackgroundColor(AndroidColor.parseColor("#142218"))
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             webChromeClient = WebChromeClient()
-            webViewClient = StreetViewAssetClient(context) {
+            webViewClient = FreeMapAssetClient(context) {
                 pageLoaded = true
             }
             addJavascriptInterface(
-                StreetViewJsBridge { code, detail ->
+                FreeMapJsBridge { _, detail ->
                     statusDetail = detail
-                    if (code == "NO_KEY" || code == "KEY_ERROR" || code == "SATELLITE") {
-                        activeMode = "satellite"
-                    } else if (code == "SV_OK") {
-                        activeMode = "streetview"
-                    }
                 },
                 "StreetViewBridge",
             )
-            loadUrl(SV_ENTRY_URL)
+            loadUrl(MAP_ENTRY_URL)
         }
     }
 
-    LaunchedEffect(pageLoaded, activeMode, apiKey, lat, lng) {
+    LaunchedEffect(pageLoaded, activeLayer, lat, lng) {
         if (pageLoaded) {
-            val quotedKey = JSONObject.quote(apiKey)
-            val quotedMode = JSONObject.quote(activeMode)
+            val quotedLayer = JSONObject.quote(activeLayer)
             webView.evaluateJavascript(
-                "window.initGaonDarshan && window.initGaonDarshan($lat, $lng, $headingDeg, $quotedMode, $quotedKey);",
+                "window.initFreeMap && window.initFreeMap($lat, $lng, $headingDeg, $quotedLayer);",
                 null,
             )
         }
@@ -183,13 +167,13 @@ fun RealStreetViewOverlay(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0D1117))) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF142218))) {
         AndroidView(
             factory = { webView },
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Floating Top Control Strip
+        // Floating Top Bar: Live Coordinates + Esri Satellite / OSM / Free 3D 360° Switchers
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -199,7 +183,6 @@ fun RealStreetViewOverlay(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Location & Status Card
             Column(
                 modifier = Modifier
                     .weight(1f, fill = false)
@@ -209,7 +192,7 @@ fun RealStreetViewOverlay(
                     .padding(horizontal = 12.dp, vertical = 7.dp),
             ) {
                 Text(
-                    text = "360° Gaon Darshan • ${"%.5f".format(lat)}°N, ${"%.5f".format(lng)}°E",
+                    text = "Gaon Darshan • ${"%.5f".format(lat)}°N, ${"%.5f".format(lng)}°E",
                     style = MaterialTheme.typography.labelLarge,
                     color = MarigoldSaffron,
                     maxLines = 1,
@@ -226,51 +209,34 @@ fun RealStreetViewOverlay(
 
             Spacer(Modifier.width(10.dp))
 
-            // Mode Switchers + External Google 360 + Close
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ModeTogglePill(
-                    icon = Icons.Filled.Streetview,
-                    label = "360° SV",
-                    active = activeMode == "streetview",
-                    tag = "sv_mode_streetview",
-                    onClick = {
-                        if (hasKey) {
-                            activeMode = "streetview"
-                        } else {
-                            onOpenExternalStreetView(lat, lng, headingDeg)
-                        }
-                    },
-                )
-                ModeTogglePill(
+                MapLayerPill(
                     icon = Icons.Filled.Public,
-                    label = "Satellite",
-                    active = activeMode == "satellite",
-                    tag = "sv_mode_satellite",
-                    onClick = { activeMode = "satellite" },
+                    label = "Esri Satellite",
+                    active = activeLayer == "satellite",
+                    tag = "map_layer_esri",
+                    onClick = { activeLayer = "satellite" },
+                )
+                MapLayerPill(
+                    icon = Icons.Filled.Map,
+                    label = "OSM Map",
+                    active = activeLayer == "osm",
+                    tag = "map_layer_osm",
+                    onClick = { activeLayer = "osm" },
                 )
 
                 Button(
-                    onClick = { onOpenExternalStreetView(lat, lng, headingDeg) },
+                    onClick = onEnterFree3dView,
                     colors = ButtonDefaults.buttonColors(containerColor = ChanaEmerald, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.height(48.dp).testTag("sv_open_google_maps_button"),
+                    modifier = Modifier.height(48.dp).testTag("map_enter_free_3d_button"),
                 ) {
-                    Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.ViewInAr, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Google 360°", style = MaterialTheme.typography.labelLarge)
-                }
-
-                if (!hasKey) {
-                    ModeTogglePill(
-                        icon = Icons.Filled.Key,
-                        label = "Add Key",
-                        active = false,
-                        tag = "sv_add_api_key_button",
-                        onClick = onOpenSettingsForKey,
-                    )
+                    Text("Free 3D 360°", style = MaterialTheme.typography.labelLarge)
                 }
 
                 Box(
@@ -295,7 +261,7 @@ fun RealStreetViewOverlay(
 }
 
 @Composable
-private fun ModeTogglePill(
+private fun MapLayerPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     active: Boolean,

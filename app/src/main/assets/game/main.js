@@ -331,8 +331,17 @@ export async function bootJoharBarha3D() {
     loadOsm: () => {
       world.loadOsmRoads((status) => bridgeCall('onOsmStatus', status));
     },
-    setMapsApiKey: (apiKey) => {
-      world.applySatelliteGroundTexture(apiKey || '');
+    setSatelliteTerrain: (enabled) => {
+      world.applySatelliteGroundTexture(!!enabled, (status) => bridgeCall('onOsmStatus', status));
+    },
+    enterFree3dDarshan: () => {
+      audio.unlock();
+      isTitleScreen = false;
+      isPaused = false;
+      cameraMode = 'DARSHAN_360';
+      darshanOrbitYaw = (isWalking ? heroState.heading : carState.heading) + Math.PI;
+      darshanPitch = 0.16;
+      bridgeCall('onToast', 'Free 360° 3D Gaon Darshan! Screen drag karke charo taraf dekho!');
     },
   };
 

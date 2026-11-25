@@ -156,13 +156,97 @@ export function buildJoharBarhaWorld(scene) {
   groundTex.repeat.set(95, 95);
   groundTex.colorSpace = THREE.SRGBColorSpace;
 
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.96, metalness: 0.02 });
   const ground = new THREE.Mesh(
     new THREE.CircleGeometry(GEOFENCE_RADIUS + 420, 64),
-    new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.96, metalness: 0.02 }),
+    groundMat,
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   worldGroup.add(ground);
+
+  // Zero-Key Real Satellite Ground Texture using Free Esri World Imagery Tiles (5x5 stitched around Johar Barha)
+  let esriSatTexture = null;
+  let esriLoadingStarted = false;
+  let groundSatPlaneGeo = null;
+  const groundProceduralGeo = ground.geometry;
+
+  function loadEsriSatelliteGround(onStatus) {
+    if (esriSatTexture) {
+      if (groundSatPlaneGeo) ground.geometry = groundSatPlaneGeo;
+      groundMat.map = esriSatTexture;
+      groundMat.needsUpdate = true;
+      return;
+    }
+    if (esriLoadingStarted) return;
+    esriLoadingStarted = true;
+
+    const z = 15;
+    const n = Math.pow(2, z);
+    const exactX = ((CENTER_LNG + 180) / 360) * n;
+    const latRad = (CENTER_LAT * Math.PI) / 180;
+    const exactY = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+    const centerTileX = Math.floor(exactX);
+    const centerTileY = Math.floor(exactY);
+
+    const grid = 5;
+    const half = 2;
+    const tilePx = 256;
+    const satCanvas = document.createElement('canvas');
+    satCanvas.width = grid * tilePx;
+    satCanvas.height = grid * tilePx;
+    const sctx = satCanvas.getContext('2d');
+    sctx.fillStyle = '#5c7c32';
+    sctx.fillRect(0, 0, satCanvas.width, satCanvas.height);
+
+    const metersPerTile = (40075016.686 * Math.cos(latRad)) / n;
+    const totalMeters = metersPerTile * grid;
+    groundSatPlaneGeo = new THREE.PlaneGeometry(totalMeters, totalMeters);
+    const offsetTileX = exactX - (centerTileX + 0.5);
+    const offsetTileY = exactY - (centerTileY + 0.5);
+
+    esriSatTexture = new THREE.CanvasTexture(satCanvas);
+    esriSatTexture.colorSpace = THREE.SRGBColorSpace;
+    esriSatTexture.anisotropy = 4;
+
+    let loadedCount = 0;
+    for (let dx = -half; dx <= half; dx++) {
+      for (let dy = -half; dy <= half; dy++) {
+        const tx = centerTileX + dx;
+        const ty = centerTileY + dy;
+        const drawX = (dx + half) * tilePx;
+        const drawY = (dy + half) * tilePx;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          sctx.drawImage(img, drawX, drawY, tilePx, tilePx);
+          loadedCount++;
+          esriSatTexture.needsUpdate = true;
+          if (loadedCount === 1) {
+            ground.geometry = groundSatPlaneGeo;
+            ground.position.set(-offsetTileX * metersPerTile, 0, -offsetTileY * metersPerTile);
+            groundMat.map = esriSatTexture;
+            groundMat.needsUpdate = true;
+          }
+          if (loadedCount >= grid * grid) {
+            onStatus?.('Esri Satellite + OSM Live (No API Key)');
+          }
+        };
+        img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
+      }
+    }
+  }
+
+  function applySatelliteGroundTexture(enabled, onStatus) {
+    if (!enabled) {
+      ground.geometry = groundProceduralGeo;
+      ground.position.set(0, 0, 0);
+      groundMat.map = groundTex;
+      groundMat.needsUpdate = true;
+      return;
+    }
+    loadEsriSatelliteGround(onStatus);
+  }
 
   // 3. Roads (Paved Asphalt + Dusty Kachha Lanes)
   const asphaltCanvas = document.createElement('canvas');

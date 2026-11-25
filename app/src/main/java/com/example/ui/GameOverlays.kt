@@ -50,15 +50,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,7 +83,6 @@ fun GameModalHost(
     state: GameUiState,
     viewModel: GameViewModel,
     onShareSwag: () -> Unit,
-    onOpenExternalStreetView: (Double, Double, Float) -> Unit,
 ) {
     when (state.activeModal) {
         ActiveModal.NONE -> Unit
@@ -115,9 +109,7 @@ fun GameModalHost(
                 lat = state.telemetry.lat,
                 lng = state.telemetry.lng,
                 headingDeg = state.telemetry.headingDeg,
-                apiKey = state.mapsApiKey,
-                onOpenSettingsForKey = { viewModel.openModal(ActiveModal.SETTINGS) },
-                onOpenExternalStreetView = onOpenExternalStreetView,
+                onEnterFree3dView = { viewModel.enterFree3dView() },
                 onClose = { viewModel.closeModal() },
             )
         }
@@ -223,7 +215,7 @@ private fun TitleOverlay(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactTitleChip(Icons.Filled.Streetview, "Street View", "title_street_view_button") {
+                CompactTitleChip(Icons.Filled.Streetview, "Sat / 3D Map", "title_street_view_button") {
                     viewModel.openModal(ActiveModal.STREET_VIEW)
                 }
                 CompactTitleChip(Icons.Filled.Garage, "Garage", "title_garage_button") {
@@ -633,58 +625,25 @@ private fun SettingsOverlay(
                 }
             }
             item {
-                var keyInput by remember(state.mapsApiKey) { mutableStateOf(state.mapsApiKey) }
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(ObsidianElevated)
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Google Maps API Key (Real 360° Street View & Satellite)",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MarigoldSaffron,
-                    )
-                    Text(
-                        text = "Optional: Paste your Google Maps API key (Maps JS + Static Maps enabled) for embedded 360° Street View & satellite terrain. Free Satellite + Google Maps 360° launch works even without a key!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MutedSandText,
-                    )
-                    OutlinedTextField(
-                        value = keyInput,
-                        onValueChange = { keyInput = it },
-                        singleLine = true,
-                        placeholder = { Text("AIzaSy...") },
-                        modifier = Modifier.fillMaxWidth().testTag("maps_api_key_input"),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { viewModel.saveMapsApiKey(keyInput) },
-                            colors = ButtonDefaults.buttonColors(containerColor = MarigoldSaffron, contentColor = Color(0xFF1A1200)),
-                            modifier = Modifier.height(48.dp).testTag("save_maps_key_button"),
-                        ) {
-                            Text("Save Key", style = MaterialTheme.typography.labelLarge)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                keyInput = ""
-                                viewModel.saveMapsApiKey("")
-                            },
-                            modifier = Modifier.height(48.dp).testTag("clear_maps_key_button"),
-                        ) {
-                            Text("Clear", color = WarmIvoryText)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.openModal(ActiveModal.STREET_VIEW) },
-                            modifier = Modifier.height(48.dp).testTag("settings_open_sv_button"),
-                        ) {
-                            Icon(Icons.Filled.Streetview, contentDescription = null, tint = ChanaEmerald)
-                            Spacer(Modifier.width(5.dp))
-                            Text("Open Street View", color = WarmIvoryText)
-                        }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Esri World Imagery 3D Ground (Free)", style = MaterialTheme.typography.titleMedium, color = MarigoldSaffron)
+                        Text("Real satellite imagery of Gram Johar Barha — no API key needed", style = MaterialTheme.typography.bodyMedium, color = MutedSandText)
                     }
+                    Switch(
+                        checked = state.satelliteTerrainEnabled,
+                        onCheckedChange = { viewModel.setSatelliteTerrainEnabled(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = ChanaEmerald),
+                        modifier = Modifier.testTag("satellite_terrain_switch"),
+                    )
                 }
             }
             item {

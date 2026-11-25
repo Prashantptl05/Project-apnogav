@@ -275,7 +275,7 @@ fun DrivingHudOverlay(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // Real Street View Peek (360° Gaon Darshan) Toggle Button
+                        // Free Esri Satellite / OSM Map & 360° Gaon View Button (Zero API Key)
                         Row(
                             modifier = Modifier
                                 .height(40.dp)
@@ -289,13 +289,13 @@ fun DrivingHudOverlay(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Streetview,
-                                contentDescription = "Real Street View Peek",
+                                contentDescription = "Open Free Satellite Map and 3D View",
                                 tint = ChanaEmerald,
                                 modifier = Modifier.size(17.dp),
                             )
                             Spacer(Modifier.width(5.dp))
                             Text(
-                                text = "STREET VIEW",
+                                text = "SAT / 3D",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = WarmIvoryText,
                             )
